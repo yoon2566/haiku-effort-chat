@@ -259,7 +259,7 @@
     const prompt = $('prompt');
     const value = prompt.value + (prompt.value ? '\n\n' : '') + editor.value;
     if (value.length > prompt.maxLength) {
-      note('프롬프트 입력 한도를 넘습니다. 입력창의 내용을 줄인 후 다시 복사해 주세요.');
+      note('프롬프트 입력 한도를 넘습니다. 입력창의 내용을 줄인 후 다시 옮겨 주세요.');
       return;
     }
     prompt.value = value;
@@ -267,7 +267,7 @@
     dialog.close();
     prompt.focus();
     prompt.setSelectionRange(value.length, value.length);
-    $('status').textContent = '캔버스 내용을 입력창에 복사했습니다. 확인한 뒤 보내 주세요.';
+    $('status').textContent = '캔버스 내용을 입력창에 옮겼습니다. 확인한 뒤 보내 주세요.';
   });
   controls();
 })();

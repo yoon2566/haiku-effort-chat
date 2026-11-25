@@ -6,14 +6,16 @@
   <meta name="theme-color" content="#faf9f6">
   <title>하이쿠</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%233c4238'/%3E%3Cpath d='M9 9v14M23 9v14M9 16h14' stroke='white' stroke-width='3'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/style.css?v=canvas-tools-20261026">
+  <link rel="stylesheet" href="/style.css?v=canvas-actions-20261107">
   <script src="/native-stream.js?v=exa-2" defer></script>
-  <script src="/app.js?v=exa-2" defer></script>
-  <script src="/canvas.js?v=canvas-tools-20261026" defer></script>
+  <script src="/game-preview.js?v=performance-20261107" defer></script>
+  <script src="/conversation-memory.js?v=continuity-20261107" defer></script>
+  <script src="/app.js?v=haiku-effort-20261116" defer></script>
+  <script src="/canvas.js?v=canvas-actions-20261107" defer></script>
 </head>
 <body>
   <div id="chatScreen">
-  <header class="header"><span class="wordmark">하이쿠</span><div class="header-actions"><span class="model-label">Haiku 5.5 <span aria-hidden="true">·</span> <span id="effortDisplay">Medium</span></span><button id="canvasOpen" class="canvas-open" type="button" aria-haspopup="dialog">프롬프트 캔버스</button></div></header>
+  <header class="header"><span class="wordmark">하이쿠</span><div class="header-actions"><span class="model-label"><span id="modelDisplay">Haiku 5.5</span> <span aria-hidden="true">·</span> <span id="effortDisplay">Medium</span></span><button id="canvasOpen" class="canvas-open" type="button" aria-haspopup="dialog">프롬프트 캔버스</button></div></header>
   <main id="main" class="main">
     <section id="welcome" class="welcome"><h1>무엇을 만들어 볼까요?</h1><p>만들고 싶은 게임이나 필요한 이미지를 요청해 보세요.</p></section>
     <section id="messages" class="messages" aria-label="대화" aria-live="off"></section>
@@ -26,9 +28,9 @@
           <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif,.html,.htm,text/html" multiple hidden>
           <button id="attach" class="icon-button attach-button" type="button" aria-label="이미지 또는 HTML 파일 첨부" title="이미지 또는 HTML 파일 첨부 · Ctrl+V로 이미지 붙여넣기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
           <span class="input-hint">이미지·HTML 파일 첨부</span>
-          <label class="effort-control" for="effortSelect"><span>에포트</span><select id="effortSelect" aria-label="에포트 설정"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="xhigh">Xhigh</option><option value="max">Max</option></select></label>
+          <label class="effort-control" for="effortSelect"><span>에포트</span><select id="effortSelect" aria-label="에포트 설정"><option value="medium" selected>Medium</option><option value="high">High</option></select></label>
           <button id="thinkingToggle" class="thinking-toggle" type="button" role="switch" aria-checked="false" aria-label="추론" aria-describedby="thinkingHint" title="추론 켜기 · 복잡한 문제를 더 검토하며, 응답 시작까지 시간이 더 걸릴 수 있어요."><span class="thinking-track" aria-hidden="true"></span><span id="thinkingLabel">추론 꺼짐</span></button>
-          <span id="thinkingHint" class="sr-only">켜면 복잡한 문제를 더 검토하며, 응답 시작까지 시간이 더 걸릴 수 있어요. 선택한 에포트로 답변해요. Xhigh와 Max는 추론이 필수예요.</span>
+          <span id="thinkingHint" class="sr-only">켜면 복잡한 문제를 더 검토하며, 응답 시작까지 시간이 더 걸릴 수 있어요. 선택한 에포트로 답변해요.</span>
           <button id="imageModeToggle" class="thinking-toggle image-mode-toggle" type="button" role="switch" aria-checked="false" aria-label="이미지 생성" title="켜면 입력한 문장으로 이미지를 만들어요"><span class="thinking-track" aria-hidden="true"></span><span id="imageModeLabel">이미지 꺼짐</span></button>
           <button id="send" class="icon-button send-button" type="submit" aria-label="보내기" title="보내기" disabled><svg id="sendIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 12 6-6 6 6M12 6v13"/></svg><svg id="stopIcon" viewBox="0 0 24 24" aria-hidden="true" hidden><rect x="7" y="7" width="10" height="10" rx="1"/></svg></button>
         </div>
@@ -39,7 +41,7 @@
   </main>
   </div>
   <dialog id="previewDialog" class="preview-dialog" aria-labelledby="previewTitle">
-    <div class="preview-header"><h2 id="previewTitle">게임 미리보기</h2><button id="previewClose" class="icon-button" type="button" aria-label="미리보기 닫기" title="닫기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></div>
+    <div class="preview-header"><h2 id="previewTitle">게임 미리보기</h2><button id="previewOpenTab" class="preview-button" type="button">↗ 새 탭에서 실행</button><button id="previewClose" class="icon-button" type="button" aria-label="미리보기 닫기" title="닫기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></div>
     <p id="previewError" class="preview-error" role="alert" hidden></p>
     <iframe id="previewFrame" title="게임 미리보기" sandbox="allow-scripts allow-pointer-lock" allow="autoplay; fullscreen" referrerpolicy="no-referrer"></iframe>
   </dialog>
@@ -54,7 +56,6 @@
           <output id="canvasFontSize" aria-live="polite"></output>
           <button id="canvasFontIncrease" class="canvas-button canvas-font-button" type="button" aria-label="글자 크기 키우기" aria-controls="canvasText" title="글자 크기 키우기">+</button>
         </div>
-        <button id="canvasClipboardCopy" class="canvas-button primary" type="button" disabled>프롬프트 복사하기</button>
       </div>
       <label class="sr-only" for="canvasText">캔버스 내용</label>
       <textarea id="canvasText" class="canvas-text" maxlength="100000" readonly placeholder="관리자가 등록한 프롬프트가 여기에 표시됩니다."></textarea>
@@ -65,7 +66,10 @@
       <p id="canvasStatus" class="canvas-status" role="status" aria-live="polite"></p>
       <div class="canvas-actions">
         <button id="canvasLogin" class="canvas-button" type="button">관리자 로그인</button>
-        <button id="canvasCopy" class="canvas-button primary" type="button" disabled>프롬프트창에 복사하기</button>
+        <div class="canvas-transfer-actions">
+          <button id="canvasCopy" class="canvas-button primary" type="button" disabled>입력창에 옮기기</button>
+          <button id="canvasClipboardCopy" class="canvas-button primary" type="button" disabled>복사</button>
+        </div>
         <button id="canvasSave" class="canvas-button" type="button" hidden>저장</button>
         <button id="canvasLogout" class="canvas-button subtle" type="button" hidden>로그아웃</button>
         <button id="canvasReload" class="canvas-button" type="button" hidden>최신 내용 불러오기</button>

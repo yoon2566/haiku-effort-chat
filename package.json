@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "check": "wrangler deploy --dry-run",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "password:hash": "node scripts/password-hash.mjs"
   },
   "devDependencies": {
     "wrangler": "4.156.1"

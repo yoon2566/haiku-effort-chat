@@ -1,0 +1,7 @@
+{
+  "repository": "https://github.com/abagames/agentic-gamedev-skills",
+  "commit": "4ed8d751d08b5c1be14ccca02ce0b9a9bea60593",
+  "skill": "designing-mini-games",
+  "integration": "Adapted Korean game-design guidance in minimal-worker.js; no automatic execution loop.",
+  "date": "2026-10-31"
+}

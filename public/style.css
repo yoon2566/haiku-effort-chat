@@ -84,7 +84,7 @@ body.has-messages .composer-area{position:sticky;bottom:0;padding:15px 0 max(12p
 .response-details{margin-top:10px;color:#83867e;font-size:11px;overflow-wrap:anywhere}.response-details summary{cursor:pointer}.response-details p{white-space:pre-wrap;line-height:1.7}.recovery-actions button{max-width:100%;white-space:normal;text-align:left}.recovery-actions button:disabled{opacity:.5;cursor:wait}
 .preview-dialog{width:min(1280px,calc(100vw - 40px));height:min(850px,calc(100dvh - 40px));max-width:none;max-height:none;border:1px solid #d6dacd;border-radius:20px;padding:0;background:#fff;box-shadow:0 24px 90px #151b1d40;overflow:hidden}
 .preview-dialog[open]{display:flex;flex-direction:column}
-.preview-dialog::backdrop{background:#252b2c70;backdrop-filter:blur(4px)}
+.preview-dialog::backdrop{background:#252b2c}
 .preview-header{display:flex;align-items:center;justify-content:space-between;padding:10px 15px 10px 21px;border-bottom:1px solid #e8ebe2;min-height:57px;gap:15px}
 .preview-header h2{font-size:14px;font-weight:500;margin:0}
 #previewFrame{width:100%;border:0;background:#fff;flex:1;min-height:0}
@@ -106,6 +106,7 @@ body.has-messages .composer-area{position:sticky;bottom:0;padding:15px 0 max(12p
 .canvas-text:focus{border-color:#8fa57d;box-shadow:0 0 0 2px #dce5d3}
 .canvas-text::placeholder{color:#a1a696}
 .canvas-actions{display:flex;flex-wrap:wrap;gap:8px;flex-shrink:0}
+.canvas-transfer-actions{display:flex;gap:8px;flex-shrink:0}
 .canvas-button{border:1px solid #d6ddcf;background:#f5f7f1;color:#4a563f;padding:11px 14px;border-radius:10px;font-size:13px;white-space:nowrap}
 .canvas-button:hover{background:#e9efdf}
 .canvas-button.primary{background:#424d38;border-color:#424d38;color:#fff}
@@ -145,3 +146,10 @@ body.has-messages .composer-area{position:sticky;bottom:0;padding:15px 0 max(12p
 .reasoning-panel summary{cursor:pointer;padding:12px 15px;font-weight:500;user-select:none}.reasoning-hint{margin:0;padding:0 15px 9px;color:#92988b;font-size:11px;line-height:1.6}
 .reasoning-text{padding:0 15px 15px;max-height:240px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8}
 @media(max-width:600px){.reasoning-text{max-height:200px}.reasoning-panel{font-size:12px}}
+
+/* Keep chat rendering and blur compositing out of the active game. */
+body.playing-game{overflow:hidden}
+.continuity-note{margin:24px 0;padding:12px 16px;border:1px solid #d6dacd;border-radius:12px;background:#f1f4ec;color:#58634c;font-size:13px;line-height:1.6}
+body.playing-game #chatScreen{visibility:hidden;content-visibility:hidden}
+.preview-header h2{margin-right:auto}
+.preview-header .preview-button{padding:7px 10px;font-size:12px;white-space:nowrap}

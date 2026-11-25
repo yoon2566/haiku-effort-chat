@@ -10,6 +10,7 @@
     effortSelect: $('effortSelect'), imageModeToggle: $('imageModeToggle'), imageModeLabel: $('imageModeLabel')
   };
   const conversation = [];
+  const conversationMemory = window.HaikuConversationMemory.create();
   const attached = [];
   const imageTypes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
   const MAX_HTML_BYTES = 2 * 1024 * 1024;
@@ -21,20 +22,44 @@
   const recoveryButtons = new Set();
   const answerViews = new WeakMap();
   let previewToken = null;
+  let activePreviewHtml = null;
+  function openGameTab(html) {
+    if (!window.BroadcastChannel) { ui.status.textContent = '이 브라우저에서는 게임 미리보기를 이용해 주세요.'; return; }
+    const token = crypto.randomUUID();
+    const channel = new BroadcastChannel('haiku-game-' + token);
+    const timer = setTimeout(() => { channel.close(); ui.status.textContent = '새 탭이 열리지 않았다면 팝업 허용 후 다시 눌러 주세요.'; }, 30000);
+    channel.onmessage = ({ data }) => {
+      if (data?.type === 'ready') channel.postMessage({ type: 'game', html });
+      if (data?.type === 'loaded') {
+        clearTimeout(timer); channel.close();
+        // Stop the embedded copy only once the separate player has received it.
+        if (activePreviewHtml === html && ui.previewDialog.open) ui.previewDialog.close();
+        ui.status.textContent = '새 탭에서 게임을 실행했습니다.';
+      }
+    };
+    window.open('/play.html#' + token, '_blank', 'noopener');
+  }
   const THINKING_PREFERENCE = 'haiku-thinking-enabled';
   const EFFORT_PREFERENCE = 'haiku-effort';
-  const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+  const EFFORTS = ['medium', 'high'];
   let effort = 'medium';
   let imageMode = false;
   let thinkingEnabled = false;
   try { thinkingEnabled = localStorage.getItem(THINKING_PREFERENCE) === 'true'; }
   catch { /* The toggle also works when browser storage is unavailable. */ }
 
-  try { const saved = localStorage.getItem(EFFORT_PREFERENCE); if (EFFORTS.includes(saved)) effort = saved; } catch {}
-  if (['xhigh', 'max'].includes(effort)) thinkingEnabled = true;
+  try {
+    const saved = localStorage.getItem(EFFORT_PREFERENCE);
+    if (EFFORTS.includes(saved)) effort = saved;
+    else if (saved !== null) {
+      if (saved === 'xhigh' || saved === 'max') {
+        thinkingEnabled = false;
+        localStorage.setItem(THINKING_PREFERENCE, 'false');
+      }
+      localStorage.setItem(EFFORT_PREFERENCE, effort);
+    }
+  } catch {}
   function updateThinking() {
-    const required = ['xhigh', 'max'].includes(effort);
-    if (required) thinkingEnabled = true;
     ui.effortSelect.value = effort;
     $('effortDisplay').textContent = effort[0].toUpperCase() + effort.slice(1);
     ui.imageModeToggle.setAttribute('aria-checked', String(imageMode));
@@ -42,68 +67,15 @@
     ui.imageModeToggle.title = imageMode ? '이미지 생성 끄기 · 하이쿠와 대화해요' : '이미지 생성 켜기 · 입력한 문장으로 리크래프트 이미지를 만들어요';
     ui.thinkingToggle.setAttribute('aria-checked', String(thinkingEnabled));
     ui.thinkingLabel.textContent = thinkingEnabled ? '추론 켜짐' : '추론 꺼짐';
-    ui.thinkingToggle.title = required ? 'Xhigh와 Max에서는 추론이 필수입니다.' : thinkingEnabled
+    ui.thinkingToggle.title = thinkingEnabled
       ? '추론 끄기 · 추가 추론 없이 답변을 시작해요.'
       : '추론 켜기 · 복잡한 문제를 더 검토하며, 응답 시작까지 시간이 더 걸릴 수 있어요.';
-  }
-
-  // Runs inside the opaque-origin sandbox; never exposes the parent's storage.
-  function previewBootstrap(token) {
-    function report(message) {
-      parent.postMessage({ type: 'haiku-preview-error', token, message: String(message).slice(0, 500) }, '*');
-    }
-    function memoryStorage() {
-      const values = new Map();
-      const methods = {
-        getItem(key) { return values.get(String(key)) ?? null; },
-        setItem(key, value) { values.set(String(key), String(value)); },
-        removeItem(key) { values.delete(String(key)); },
-        clear() { values.clear(); },
-        key(index) { return [...values.keys()][Number(index)] ?? null; }
-      };
-      return new Proxy(methods, {
-        get(target, key) {
-          if (key === 'length') return values.size;
-          if (key in target) return target[key];
-          return values.get(String(key));
-        },
-        set(_target, key, value) { values.set(String(key), String(value)); return true; },
-        deleteProperty(_target, key) { values.delete(String(key)); return true; },
-        ownKeys() { return [...values.keys()]; },
-        getOwnPropertyDescriptor(_target, key) {
-          return values.has(String(key)) ? { enumerable: true, configurable: true, value: values.get(String(key)) } : undefined;
-        }
-      });
-    }
-    for (const name of ['localStorage', 'sessionStorage']) {
-      try { window[name].getItem('__haiku_preview_probe__'); }
-      catch {
-        try { Object.defineProperty(window, name, { configurable: true, value: memoryStorage() }); }
-        catch { report('게임의 임시 저장소를 준비하지 못했습니다. 저장소 없이 실행하도록 게임 코드를 수정해 주세요.'); }
-      }
-    }
-    addEventListener('error', event => {
-      const asset = event.target?.src || event.target?.href;
-      report(event.message || (asset ? '외부 파일을 불러오지 못했습니다: ' + asset : '게임 실행 중 오류가 발생했습니다.'));
-    }, true);
-    addEventListener('unhandledrejection', event => report(event.reason?.message || event.reason || '게임 실행 중 비동기 오류가 발생했습니다.'));
-    addEventListener('keydown', event => {
-      if (event.key === 'Escape') parent.postMessage({ type: 'haiku-preview-close', token }, '*');
-    });
-  }
-
-  function previewDocument(html, token) {
-    const doc = new DOMParser().parseFromString(html, 'text/html');
-    const bootstrap = doc.createElement('script');
-    bootstrap.textContent = '(' + previewBootstrap.toString() + ')(' + JSON.stringify(token) + ');';
-    doc.head.prepend(bootstrap);
-    return '<!doctype html>\n' + doc.documentElement.outerHTML;
   }
 
   function updateSend() {
     ui.send.disabled = !controller && (addingImages || (!ui.prompt.value.trim() && !attached.length));
     ui.attach.disabled = Boolean(controller) || addingImages || imageMode;
-    ui.thinkingToggle.disabled = Boolean(controller) || imageMode || ['xhigh', 'max'].includes(effort);
+    ui.thinkingToggle.disabled = Boolean(controller) || imageMode;
     ui.effortSelect.disabled = Boolean(controller) || imageMode;
     ui.imageModeToggle.disabled = Boolean(controller);
     ui.send.setAttribute('aria-label', controller ? '응답 중지' : '보내기');
@@ -313,7 +285,14 @@
     return null;
   }
 
+  // The chat is hidden while a game plays, which collapses the page height and
+  // resets the scroll. Remember where the reader was so closing returns there.
+  let previewScrollY = null;
+
   function openPreview(html) {
+    activePreviewHtml = html;
+    if (!document.body.classList.contains("playing-game")) previewScrollY = window.scrollY;
+    document.body.classList.add("playing-game");
     if (!ui.previewDialog.open) ui.previewDialog.showModal();
     previewToken = crypto.randomUUID();
     $('previewError').hidden = true;
@@ -335,7 +314,7 @@
     // Canvas games often size themselves once from innerWidth during initial execution.
     requestAnimationFrame(() => requestAnimationFrame(() => {
       if (!ui.previewDialog.open || previewToken !== token || ui.previewFrame !== frame) return;
-      frame.srcdoc = previewDocument(html, token);
+      frame.srcdoc = window.HaikuGamePreview.document(html, token);
     }));
     $('previewClose').focus();
   }
@@ -479,7 +458,12 @@
         download.type = 'button';
         download.textContent = '↓ HTML 다운로드';
         download.addEventListener('click', () => downloadHtml(html));
-        actions.append(preview, download);
+        const separate = document.createElement('button');
+        separate.className = 'preview-button';
+        separate.type = 'button';
+        separate.textContent = '↗ 새 탭에서 실행';
+        separate.addEventListener('click', () => openGameTab(html));
+        actions.append(preview, separate, download);
         target.append(actions);
       }
     }
@@ -520,7 +504,7 @@
   function offerRetry(article, request) {
     const actions = document.createElement('div'); actions.className = 'game-actions recovery-actions';
     const button = document.createElement('button'); button.type = 'button'; button.className = 'preview-button';
-    button.textContent = 'Medium · 추론 끄기로 다시 시도';
+    button.textContent = 'Haiku Medium · 추론 끄기로 다시 시도';
     button.addEventListener('click', event => { if (!controller) void send(event, request); });
     recoveryButtons.add(button); actions.append(button); article.append(actions);
   }
@@ -573,10 +557,10 @@
     event.preventDefault();
     if (controller) { controller.abort(); return; }
     const prompt = retry ? retry.prompt : ui.prompt.value.trim();
-    const sourceAttachments = retry ? retry.pending : attached;
+    const sourceAttachments = retry ? retry.pending : [...attached];
     const requestImageMode = retry ? false : imageMode;
     const requestEffort = retry ? 'medium' : effort;
-    const requestThinkingEnabled = retry ? false : thinkingEnabled;
+    const requestThinkingEnabled = !retry && thinkingEnabled;
     if ((!prompt && !sourceAttachments.length) || addingImages) return;
     if (requestImageMode && sourceAttachments.length) { status('이미지 모드에서는 첨부 파일을 제거하고 만들 이미지의 설명을 입력해 주세요.'); return; }
     if (requestImageMode && prompt.length > 12000) { status('이미지 설명은 12,000자 이내로 입력해 주세요.'); return; }
@@ -585,11 +569,34 @@
     const text = [prompt || (files.length ? '첨부한 HTML 파일의 코드를 살펴보고 설명해 주세요.' : '첨부한 이미지를 살펴보고 설명해 주세요.'),
       ...files.map(file => '\n[첨부 HTML 파일: ' + file.name + ']\n' + file.text + '\n[첨부 HTML 파일 끝]'),
       ...(files.length ? ['HTML 파일 수정 요청이라면 수정한 파일의 전체 내용을 생략 없이 html 코드 블록으로 반환해 주세요. 다운로드하고 바로 실행할 수 있도록 <!doctype html>, <html>, </html>을 포함한 완전한 문서로 작성하고, 변경하지 않은 코드도 유지해 주세요. 설명만 요청했다면 설명에 답해 주세요.'] : [])].join('\n');
-    const historyChars = conversation.reduce((sum, message) => sum + (typeof message.content === 'string' ? message.content.length : message.content.reduce((n, part) => n + (part.type === 'text' ? part.text.length : 0), 0)), 0);
-    if (historyChars + text.length > 400000) { status('대화와 첨부 코드의 합계가 400,000자를 넘었습니다. 파일을 줄이거나 새로고침해 새 대화를 시작해 주세요.'); return; }
+    // Prepare a replacement history atomically; leave the draft, visible chat and
+    // canonical game intact on cancellation, network failure or invalid summary.
+    controller = new AbortController();
+    updateSend();
+    try {
+      const prepared = await conversationMemory.prepare(conversation, {role: 'user', content: text}, async (previous, transcript, signal) => {
+        status('이전 대화를 정리하고 있어요. 최신 게임 코드는 그대로 유지합니다…');
+        const response = await fetch('/api/chat', {
+          method: 'POST', headers: {'Content-Type': 'application/json'}, signal,
+          body: JSON.stringify({operation: 'summarize', messages: [{role: 'user', content: (previous ? '[이전까지의 요약]\n' + previous + '\n\n' : '') + '[이어지는 대화]\n' + transcript}]})
+        });
+        if (!response.ok) throw new Error(await responseError(response));
+        const result = await response.json();
+        return result.summary;
+      }, controller.signal);
+      if (prepared.compacted) {
+        conversation.splice(0, conversation.length, ...prepared.messages);
+        const note = document.createElement('p'); note.className = 'continuity-note'; note.setAttribute('role', 'status');
+        note.textContent = '이전 대화를 정리했어요. 최신 게임 코드와 작업 내용을 이어서 사용합니다.';
+        ui.messages.append(note);
+      }
+    } catch (error) {
+      status(error.name === 'AbortError' ? '대화 정리를 중지했습니다. 기존 대화와 코드는 그대로입니다.' : (error.message || '대화 정리에 실패했습니다.') + ' 작성한 요청은 그대로 남아 있습니다.');
+      return;
+    } finally { controller = null; updateSend(); }
     // Recovery uses the failed request, without overwriting a newly edited draft.
-    const clearDraft = !retry || (ui.prompt.value.trim() === prompt && attached.length === sourceAttachments.length && attached.every((item, index) => item === sourceAttachments[index]));
-    const pending = retry ? [...retry.pending] : attached.splice(0);
+    const clearDraft = ui.prompt.value.trim() === prompt && attached.length === sourceAttachments.length && attached.every((item, index) => item === sourceAttachments[index]);
+    const pending = [...sourceAttachments];
     if (retry) {
       effort = 'medium'; thinkingEnabled = false; imageMode = false;
       try { localStorage.setItem(EFFORT_PREFERENCE, effort); localStorage.setItem(THINKING_PREFERENCE, 'false'); } catch {}
@@ -603,6 +610,7 @@
     ] : text;
     const userMessage = { role: 'user', content: userContent };
     conversation.push(userMessage);
+    if (files.length) conversationMemory.record(files.map(file => '<!-- 첨부 파일: ' + file.name.replace(/-->/g, '') + ' -->\n' + file.text).join('\n\n'));
     if (!retry) appendUser(prompt, images, files);
     const target = appendAssistant();
     document.body.classList.add('has-messages');
@@ -716,7 +724,8 @@
       }
       if (nativeStream) nativeStream.finish();
       if (!answer.trim()) throw new Error(emptyReplyMessage(finishReason, nativeFinishReason, receivedEnd, Boolean(reasoningText)));
-      responseComplete = !nativeStream || nativeStream.complete;
+      responseComplete = nativeStream ? nativeStream.complete : receivedEnd && finishReason === 'stop';
+      if (finishReason === 'length' || finishReason === 'content_filter') responseComplete = false;
       if (!receivedEnd && !finishReason) appendNote(target.article, '연결이 끊어져 응답이 일부만 표시되었을 수 있습니다.');
       if (finishReason === 'length') appendNote(target.article, '응답 길이 한도에 도달했습니다. 이어서 작성해 달라고 요청해 주세요.');
       else if (nativeStream && !responseComplete) appendNote(target.article, '모델이 답변 작성을 완료하지 못했습니다.');
@@ -744,6 +753,7 @@
       if (webFetchView) webFetchView.textContent = (webFetchRequests === null ? 'URL 읽기 횟수는 제공되지 않았습니다.' : 'URL 읽기 요청: ' + webFetchRequests + '회.') + ' 확인한 파일과 읽기 실패 여부는 답변을 확인해 주세요. 페이지를 읽은 것만으로 코드를 실행·검증한 것은 아닙니다.';
       if (answer) {
         conversation.push({ role: 'assistant', content: answer });
+        if (responseComplete && !generatedImage) conversationMemory.record(gameHtml(answer));
         if (generatedImage) renderGeneratedImage(target.content, generatedImage);
         else renderAnswer(target.content, answer, nativeStream ? responseComplete : true);
       } else target.content.replaceChildren();
@@ -757,7 +767,7 @@
 
   ui.composer.addEventListener('submit', send);
   ui.thinkingToggle.addEventListener('click', () => {
-    if (controller || imageMode || ['xhigh', 'max'].includes(effort)) return;
+    if (controller || imageMode) return;
     thinkingEnabled = !thinkingEnabled;
     try { localStorage.setItem(THINKING_PREFERENCE, String(thinkingEnabled)); }
     catch { /* Keep this page's preference even if it cannot be persisted. */ }
@@ -765,8 +775,7 @@
   });
   ui.effortSelect.addEventListener('change', () => {
     if (controller || imageMode) return;
-    effort = ui.effortSelect.value;
-    if (['xhigh', 'max'].includes(effort)) thinkingEnabled = true;
+    effort = EFFORTS.includes(ui.effortSelect.value) ? ui.effortSelect.value : 'medium';
     try { localStorage.setItem(EFFORT_PREFERENCE, effort); localStorage.setItem(THINKING_PREFERENCE, String(thinkingEnabled)); } catch {}
     updateThinking(); updateSend();
   });
@@ -790,13 +799,23 @@
     const files = [...(event.clipboardData?.items || [])].filter(item => item.kind === 'file' && item.type.startsWith('image/')).map(item => item.getAsFile()).filter(Boolean);
     if (files.length) { event.preventDefault(); addImages(files); }
   });
+  $('previewOpenTab').addEventListener('click', () => { if (activePreviewHtml) openGameTab(activePreviewHtml); });
   $('previewClose').addEventListener('click', () => ui.previewDialog.close());
   ui.previewDialog.addEventListener('close', () => {
     // A queued close event may arrive after the user already opened another preview.
     if (ui.previewDialog.open) return;
     previewToken = null;
+    activePreviewHtml = null;
+    document.body.classList.remove("playing-game");
     ui.previewFrame.srcdoc = '';
     $('previewError').hidden = true;
+    if (previewScrollY !== null) {
+      const y = previewScrollY;
+      previewScrollY = null;
+      const restore = () => window.scrollTo({ top: y, behavior: 'instant' });
+      restore();
+      requestAnimationFrame(restore);
+    }
   });
   updateThinking();
   updateSend();
